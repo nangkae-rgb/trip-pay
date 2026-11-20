@@ -1,4 +1,4 @@
-const CACHE_NAME = "trip-pay-shell-v5";
+const CACHE_NAME = "trip-pay-shell-v6";
 const APP_SHELL = [
   "./",
   "./index.html",
