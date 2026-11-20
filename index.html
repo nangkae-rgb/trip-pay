@@ -62,8 +62,8 @@ function render(){
  root.innerHTML=`
  <section class="hero"><small>현재 여행</small><h1>${esc(t.name)}</h1><div class="meta">${t.members.length}명 · ${currencyNames[t.currency]||t.currency} · ${esc(t.startDate||'날짜 미정')}</div><div class="total">${fmt(total(t),t)}</div><div class="total-label">누적 여행 지출</div></section>
  <section class="stats"><div class="stat"><label>등록된 지출</label><strong>${allExpenses(t).length}건</strong></div><div class="stat"><label>여행 멤버</label><strong>${t.members.length}명</strong></div></section>
- <nav class="tabs"><button class="tab ${tab==='expenses'?'active':''}" data-tab="expenses">지출 내역</button><button class="tab ${tab==='settle'?'active':''}" data-tab="settle">정산하기</button><button class="tab ${tab==='members'?'active':''}" data-tab="members">멤버</button><button class="tab ${tab==='settings'?'active':''}" data-tab="settings">여행 설정</button></nav>
- <div id="tabContent">${tab==='expenses'?expensesView(t):tab==='settle'?settleView(t):tab==='members'?membersView(t):settingsView(t)}</div>
+ <nav class="tabs"><button class="tab ${tab==='expenses'?'active':''}" data-tab="expenses">지출 내역</button><button class="tab ${tab==='settle'?'active':''}" data-tab="settle">정산하기</button><button class="tab ${tab==='pool'?'active':''}" data-tab="pool">공금</button><button class="tab ${tab==='members'?'active':''}" data-tab="members">멤버</button><button class="tab ${tab==='settings'?'active':''}" data-tab="settings">여행 설정</button></nav>
+ <div id="tabContent">${tab==='expenses'?expensesView(t):tab==='settle'?settleView(t):tab==='pool'?poolView(t):tab==='members'?membersView(t):settingsView(t)}</div>
  <div class="btnrow" style="margin-top:16px"><button class="btn full" id="addExpense">＋ 지출 추가</button></div>
  <div class="btnrow" style="margin-top:9px"><button class="btn secondary full" id="switchTrip">여행 목록으로</button></div>`;
  root.querySelectorAll('[data-tab]').forEach(x=>x.onclick=()=>{tab=x.dataset.tab;render()});
@@ -90,6 +90,19 @@ function settleView(t){
  ${trans.length?'<button class="btn full" id="recordSettle" style="margin-top:10px">정산 내역에 송금 기록하기</button>':''}</div>
  <div class="card"><div class="sectionhead"><h2>기록된 송금</h2><span class="small muted">${paid.length}건</span></div>${paid.length?paid.map(s=>`<div class="member"><span>${esc(personName(t,s.from))} → ${esc(personName(t,s.to))}<div class="small muted">${esc(s.date||'')}</div></span><b>${fmt(s.amount,t)}</b></div>`).join(''):'<div class="empty">아직 기록된 송금이 없습니다.</div>'}</div>`;
 }
+function poolBalance(t){return (t.poolTransactions||[]).reduce((s,x)=>s+(x.type==='deposit'?1:-1)*Number(x.amount||0),0)}
+function poolView(t){
+ const tx=[...(t.poolTransactions||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+ return `<div class="card"><div class="sectionhead"><h2>여행 공금 잔액</h2><span class="pill">총무 관리</span></div><div style="font-size:28px;font-weight:850;color:var(--green)">${fmt(poolBalance(t),t)}</div><div class="small muted" style="margin-top:5px">입금 합계 − 공금 사용 합계</div><div class="btnrow" style="margin-top:14px"><button class="btn full" id="poolDeposit">＋ 공금 입금</button><button class="btn secondary full" id="poolSpend">－ 공금 사용</button></div></div>
+ <div class="card"><div class="sectionhead"><h2>공금 입출금 내역</h2><span class="small muted">${tx.length}건</span></div>${tx.length?tx.map(x=>`<div class="member"><span>${esc(x.type==='deposit'?'입금 · '+personName(t,x.memberId):'공금 사용 · '+(x.title||''))}<div class="small muted">${esc(x.date||'')}${x.type==='deposit'?' · '+esc(personName(t,x.memberId))+' 입금':''}</div></span><b class="${x.type==='deposit'?'positive':'negative'}">${x.type==='deposit'?'+':'−'}${fmt(x.amount,t)}</b></div>`).join(''):'<div class="empty">아직 공금 내역이 없습니다.</div>'}</div>
+ <div class="hint">공금 장부는 기존 개인별 지출·정산 장부와 별도로 관리됩니다. 공금으로 결제한 지출은 여기서 공금 사용으로 기록하고, 개인별 정산에 중복 등록하지 않도록 주의해 주세요.</div>`;
+}
+function poolModal(type){
+ const t=trip(),isDeposit=type==='deposit';
+ openModal(isDeposit?'공금 입금 등록':'공금 사용 등록',`<div class="field"><label>${isDeposit?'입금한 멤버':'사용 내용'}</label>${isDeposit?`<select id="poolMember">${t.members.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join('')}</select>`:'<input id="poolTitle" placeholder="예: 단체 식사, 택시비">'}</div><div class="row"><div class="field"><label>금액 (${t.currency})</label><input id="poolAmount" type="number" min="0" step="any" inputmode="decimal" placeholder="금액"></div><div class="field"><label>날짜</label><input id="poolDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div></div><button class="btn full" id="savePool">저장</button>`,()=>{
+ document.getElementById('savePool').onclick=()=>{const amount=Number(document.getElementById('poolAmount').value);if(!(amount>0))return toast('금액을 확인해 주세요');const title=isDeposit?'':document.getElementById('poolTitle').value.trim();if(!isDeposit&&!title)return toast('사용 내용을 입력해 주세요');if(!isDeposit&&amount>poolBalance(t)+0.0001)return toast('현재 공금 잔액보다 큰 금액은 사용할 수 없습니다');t.poolTransactions=t.poolTransactions||[];t.poolTransactions.push({id:id(),type,amount,date:document.getElementById('poolDate').value,memberId:isDeposit?document.getElementById('poolMember').value:null,title});save();closeModal();render();toast(isDeposit?'공금 입금을 기록했어요':'공금 사용을 기록했어요')};
+ });
+}
 function membersView(t){
  return `<div class="card"><div class="sectionhead"><h2>여행 멤버</h2><button class="btn secondary" id="addMember">＋ 추가</button></div>${t.members.map(m=>`<div class="member"><span>${esc(m.name)}</span><button class="btn ghost" style="padding:6px 10px;font-size:11px" data-rename="${m.id}">이름 수정</button></div>`).join('')}</div>`;
 }
@@ -99,6 +112,10 @@ function settingsView(t){
 }
 function bindTab(t){
  if(tab==='expenses')document.querySelectorAll('.expense').forEach((el,i)=>{const e=[...t.expenses].sort((a,b)=>(b.date||'').localeCompare(a.date||''))[i];el.onclick=()=>expenseModal(e.id)});
+ if(tab==='pool'){
+  document.getElementById('poolDeposit').onclick=()=>poolModal('deposit');
+  document.getElementById('poolSpend').onclick=()=>poolModal('spend');
+ }
  if(tab==='members'){
   document.getElementById('addMember').onclick=()=>memberModal();
   document.querySelectorAll('[data-rename]').forEach(btn=>btn.onclick=()=>memberModal(btn.dataset.rename));
