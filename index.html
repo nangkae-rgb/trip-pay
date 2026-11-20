@@ -79,8 +79,8 @@ function home(){
  <div class="hint">기록은 이 휴대폰의 브라우저에 저장됩니다. 브라우저 데이터 삭제 전 백업 파일을 저장해 주세요.</div>`;
 }
 function expensesView(t){
- if(!t.expenses.length)return '<div class="card empty">아직 지출 내역이 없습니다.<br>아래 버튼으로 첫 지출을 등록해 보세요.</div>';
- return `<div class="card"><div class="sectionhead"><h2>지출 내역</h2><span class="small muted">${t.expenses.length}건</span></div>${[...t.expenses].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(e=>`<div class="expense"><div class="dot">${e.icon||'🧾'}</div><div class="expinfo"><b>${esc(e.title)}</b><small>${esc(e.date||'')} · ${esc(personName(t,e.payer))} 결제 · ${Object.keys(e.shares||{}).length}명 부담</small></div><div class="amount">${fmt(e.amount,t)}<div class="small muted" style="font-weight:500">상세 ›</div></div></div>`).join('')}</div>`;
+ const list=[...t.expenses].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+ return `<div class="btnrow" style="margin:0 0 10px"><button class="btn secondary full" id="shareExpenses">지출 내역 공유하기</button></div>${!list.length?'<div class="card empty">아직 지출 내역이 없습니다.<br>아래 버튼으로 첫 지출을 등록해 보세요.</div>':`<div class="card"><div class="sectionhead"><h2>지출 내역</h2><span class="small muted">${list.length}건</span></div>${list.map(e=>`<div class="expense"><div class="dot">${e.icon||'🧾'}</div><div class="expinfo"><b>${esc(e.title)}</b><small>${esc(e.date||'')} · ${esc(personName(t,e.payer))} 결제 · ${Object.keys(e.shares||{}).length}명 부담</small></div><div class="amount">${fmt(e.amount,t)}<div class="small muted" style="font-weight:500">상세 ›</div></div></div>`).join('')}</div>`}`;
 }
 function settleView(t){
  const b=balances(t),trans=suggestedTransfers(t),paid=t.settlements||[];
@@ -99,7 +99,10 @@ function settingsView(t){
  <div class="card"><h3 style="margin:0 0 8px;font-size:15px">여행 데이터</h3><div class="small muted" style="line-height:1.6">여행을 삭제하면 해당 여행의 지출과 정산 기록도 삭제됩니다.</div><button class="btn danger full" id="deleteTrip" style="margin-top:12px">이 여행 삭제</button></div>`;
 }
 function bindTab(t){
- if(tab==='expenses')document.querySelectorAll('.expense').forEach((el,i)=>{const e=[...t.expenses].sort((a,b)=>(b.date||'').localeCompare(a.date||''))[i];el.onclick=()=>expenseModal(e.id)});
+ if(tab==='expenses'){
+  const shareExpenses=document.getElementById('shareExpenses');if(shareExpenses)shareExpenses.onclick=()=>expenseShareModal();
+  document.querySelectorAll('.expense').forEach((el,i)=>{const e=[...t.expenses].sort((a,b)=>(b.date||'').localeCompare(a.date||''))[i];el.onclick=()=>expenseModal(e.id)});
+ }
  if(tab==='members'){
   document.getElementById('addMember').onclick=()=>memberModal();
   document.querySelectorAll('[data-rename]').forEach(btn=>btn.onclick=()=>memberModal(btn.dataset.rename));
@@ -184,6 +187,21 @@ function backupModal(){
  openModal('데이터 백업 · 복원',`<div class="hint">여행 기록은 이 기기 안에만 저장됩니다. 휴대폰 변경이나 브라우저 초기화에 대비해 백업 파일을 보관해 주세요.</div><button class="btn full" id="exportData">백업 파일 저장 (.json)</button><div class="field" style="margin-top:18px"><label>백업 파일 불러오기</label><input type="file" id="importFile" accept=".json,application/json"></div><button class="btn secondary full" id="importData">백업 복원</button>`,()=>{
  document.getElementById('exportData').onclick=()=>{const blob=new Blob([JSON.stringify(db,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='trip-pay-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(a.href);toast('백업 파일을 저장했어요')};
  document.getElementById('importData').onclick=()=>{const f=document.getElementById('importFile').files[0];if(!f)return toast('백업 파일을 선택해 주세요');const r=new FileReader();r.onload=()=>{try{const data=JSON.parse(r.result);if(!Array.isArray(data.trips))throw Error();if(!confirm('현재 기록을 백업 파일 내용으로 교체할까요?'))return;db=data;activeId=db.activeId||null;save();closeModal();render();toast('백업을 복원했어요')}catch(e){toast('올바른 TRIP PAY 백업 파일이 아닙니다')}};r.readAsText(f)};
+ });
+}
+function expenseSummaryText(t){
+ const list=[...t.expenses].sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+ const lines=list.map((e,i)=>{
+  const shares=Object.entries(e.shares||{}).map(([pid,v])=>`${personName(t,pid)} ${fmt(v,t)}`).join(', ');
+  return `${i+1}. ${e.date||'날짜 미정'} · ${e.title}\n   결제: ${personName(t,e.payer)} · 금액: ${fmt(e.amount,t)}\n   부담: ${shares||'미기록'}`;
+ });
+ return `TRIP PAY · ${t.name}\n지출 내역 (${list.length}건)\n총 지출: ${fmt(total(t),t)}\n\n${lines.join('\n\n')||'등록된 지출 내역이 없습니다.'}`;
+}
+function expenseShareModal(){
+ const t=trip(),txt=expenseSummaryText(t);
+ openModal('지출 내역 공유',`<div class="summarybox"><div class="summaryhead"><small>TRIP PAY · EXPENSES</small><h2>${esc(t.name)}</h2><div style="font-size:25px;font-weight:850">${fmt(total(t),t)}</div><small>총 ${t.expenses.length}건의 지출</small></div>${[...t.expenses].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(e=>`<div class="summaryline" style="align-items:flex-start"><span>${esc(e.date||'날짜 미정')} · ${esc(e.title)}<small style="display:block;color:var(--muted)">${esc(personName(t,e.payer))} 결제</small></span><b>${fmt(e.amount,t)}</b></div>`).join('')||'<div class="summaryline">등록된 지출 내역이 없습니다.</div>'}</div><div class="btnrow" style="margin-top:12px"><button class="btn full" id="copyExpenses">지출 내용 복사</button><button class="btn secondary full" id="shareExpensesText">공유하기</button></div><div class="hint">지출별 결제자와 부담 내역을 텍스트로 공유할 수 있습니다.</div>`,()=>{
+  document.getElementById('copyExpenses').onclick=()=>{if(navigator.clipboard?.writeText)navigator.clipboard.writeText(txt).then(()=>toast('지출 내용을 복사했어요')).catch(()=>toast('복사 기능을 사용할 수 없습니다'));else toast('이 브라우저에서는 복사를 지원하지 않습니다')};
+  document.getElementById('shareExpensesText').onclick=()=>{if(navigator.share)navigator.share({title:'TRIP PAY 지출 내역',text:txt}).catch(()=>{});else toast('지출 내용을 복사해 공유해 주세요')};
  });
 }
 function summaryText(t){
