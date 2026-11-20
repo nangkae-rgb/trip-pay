@@ -204,13 +204,19 @@ function expenseShareModal(){
   document.getElementById('shareExpensesText').onclick=()=>{if(navigator.share)navigator.share({title:'TRIP PAY 지출 내역',text:txt}).catch(()=>{});else toast('지출 내용을 복사해 공유해 주세요')};
  });
 }
+function memberSpending(t,m){
+ const burden=t.expenses.reduce((sum,e)=>sum+Number((e.shares||{})[m.id]||0),0);
+ const paid=t.expenses.filter(e=>e.payer===m.id).reduce((sum,e)=>sum+Number(e.amount||0),0);
+ return {burden,paid};
+}
 function summaryText(t){
  const b=balances(t),tr=suggestedTransfers(t);
- return `TRIP PAY · ${t.name}\n누적 지출: ${fmt(total(t),t)}\n\n멤버별 정산 현황\n${t.members.map(m=>`${m.name}: ${b[m.id]>0.005?'받을 금액':b[m.id]<-.005?'보낼 금액':'정산 완료'} ${fmt(Math.abs(b[m.id]),t)}`).join('\n')}\n\n송금 제안\n${tr.length?tr.map(s=>`${personName(t,s.from)} → ${personName(t,s.to)}: ${fmt(s.amount,t)}`).join('\n'):'정산할 금액 없음'}`;
+
+ return `TRIP PAY · ${t.name}\n누적 지출: ${fmt(total(t),t)}\n\n개인별 사용 금액(실제 부담액)\n${t.members.map(m=>{const x=memberSpending(t,m);return `${m.name}: ${fmt(x.burden,t)} 사용 · ${fmt(x.paid,t)} 결제`}).join('\n')}\n\n멤버별 정산 현황\n${t.members.map(m=>`${m.name}: ${b[m.id]>0.005?'받을 금액':b[m.id]<-.005?'보낼 금액':'정산 완료'} ${fmt(Math.abs(b[m.id]),t)}`).join('\n')}\n\n송금 제안\n${tr.length?tr.map(s=>`${personName(t,s.from)} → ${personName(t,s.to)}: ${fmt(s.amount,t)}`).join('\n'):'정산할 금액 없음'}`;
 }
 function summaryModal(){
  const t=trip(),txt=summaryText(t);
- openModal('정산 결과 공유',`<div class="summarybox"><div class="summaryhead"><small>TRIP PAY · SETTLEMENT</small><h2>${esc(t.name)}</h2><div style="font-size:25px;font-weight:850">${fmt(total(t),t)}</div><small>누적 여행 지출</small></div>${t.members.map(m=>{const v=balances(t)[m.id];return `<div class="summaryline"><span>${esc(m.name)}</span><b>${v>0.005?'받을 금액':v<-.005?'보낼 금액':'정산 완료'} ${fmt(Math.abs(v),t)}</b></div>`}).join('')}<h3 style="margin-top:18px">송금 제안</h3>${suggestedTransfers(t).map(s=>`<div class="summaryline"><span>${esc(personName(t,s.from))} → ${esc(personName(t,s.to))}</span><b>${fmt(s.amount,t)}</b></div>`).join('')||'<div class="summaryline">정산할 금액이 없습니다.</div>'}</div><div class="btnrow" style="margin-top:12px"><button class="btn full" id="copySummary">정산 내용 복사</button><button class="btn secondary full" id="shareSummary">공유하기</button></div><div class="hint">화면을 캡처하거나 공유 버튼으로 카카오톡 등에 전달할 수 있습니다.</div>`,()=>{
+ openModal('정산 결과 공유',`<div class="summarybox"><div class="summaryhead"><small>TRIP PAY · SETTLEMENT</small><h2>${esc(t.name)}</h2><div style="font-size:25px;font-weight:850">${fmt(total(t),t)}</div><small>누적 여행 지출</small></div><h3>개인별 사용 금액</h3>${t.members.map(m=>{const x=memberSpending(t,m);return `<div class="summaryline"><span>${esc(m.name)}<small style="display:block;color:var(--muted)">실제 부담액 · ${fmt(x.paid,t)} 결제</small></span><b>${fmt(x.burden,t)}</b></div>`}).join('')}<h3 style="margin-top:18px">멤버별 정산 현황</h3>${t.members.map(m=>{const v=balances(t)[m.id];return `<div class="summaryline"><span>${esc(m.name)}</span><b>${v>0.005?'받을 금액':v<-.005?'보낼 금액':'정산 완료'} ${fmt(Math.abs(v),t)}</b></div>`}).join('')}<h3 style="margin-top:18px">송금 제안</h3>${suggestedTransfers(t).map(s=>`<div class="summaryline"><span>${esc(personName(t,s.from))} → ${esc(personName(t,s.to))}</span><b>${fmt(s.amount,t)}</b></div>`).join('')||'<div class="summaryline">정산할 금액이 없습니다.</div>'}</div><div class="btnrow" style="margin-top:12px"><button class="btn full" id="copySummary">정산 내용 복사</button><button class="btn secondary full" id="shareSummary">공유하기</button></div><div class="hint">화면을 캡처하거나 공유 버튼으로 카카오톡 등에 전달할 수 있습니다.</div>`,()=>{
  document.getElementById('copySummary').onclick=()=>{if(navigator.clipboard?.writeText)navigator.clipboard.writeText(txt).then(()=>toast('정산 내용을 복사했어요')).catch(()=>toast('복사 기능을 사용할 수 없습니다'));else toast('이 브라우저에서는 복사를 지원하지 않습니다')};
  document.getElementById('shareSummary').onclick=()=>{if(navigator.share)navigator.share({title:'TRIP PAY 정산 결과',text:txt}).catch(()=>{});else toast('정산 내용을 복사해 공유해 주세요')};
  });
